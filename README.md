@@ -45,17 +45,30 @@ Open **http://localhost:5173** and click **Sign in** to authenticate at Keycloak
 ## Scripts
 
 ```bash
-npm run dev        # Vite dev server on http://localhost:5173
-npm run typecheck  # TypeScript strict check
-npm run test       # Vitest unit & component tests
-npm run build      # Production typecheck + Vite bundle
+npm run dev           # Vite dev server on http://localhost:5173
+npm run typecheck     # TypeScript strict check (app + Playwright tests)
+npm run test          # Vitest unit & component tests
+npm run test:e2e      # Playwright browser E2E suite (mocked API & OIDC — no Docker required)
+npm run test:e2e:live # Playwright live full-stack smoke suite (requires running backend stack)
+npm run build         # Production typecheck + Vite bundle
 ```
+
+### Playwright Test Suites (`e2e/`)
+
+Playwright is split into two projects in [`playwright.config.ts`](playwright.config.ts):
+
+- **`ui` (`e2e/ui/`, default via `npm run test:e2e`):** Runs in headless Chromium with mocked `/api` and Keycloak OIDC routes (zero backend/Docker dependency; runs on every PR in GitHub Actions). Exercises the real `oidc-client-ts` PKCE `S256` redirect, guest cart persistence, `Idempotency-Key` rotation/replay, `503 Retry-After`, `202` async cancellation modal, role guards, and Protocol Inspector.
+- **`live` (`e2e/live/`, via `npm run test:e2e:live`):** Runs serially against the real local stack (Keycloak `:8180`, Gateway `:8080`, all 4 services, Kafka, PostgreSQL) to verify real Keycloak PKCE login, `admin` product/stock creation, `PLACED → CONFIRMED → DELIVERED`, `202` cancellation, and `bob` `404` ownership isolation.
 
 ## Extending in future sprints
 
 The codebase is organized by bounded context under `src/features/`:
 
 ```
+e2e/
+  fixtures/           # Mock OIDC PKCE interceptor + live Keycloak login helpers
+  ui/                 # Fast browser contract & protocol E2E suite (CI)
+  live/               # Live full-stack smoke suite
 src/
   app/                # App shell, routing, RoadmapPage
   shared/             # httpClient (RFC 9457 + traces), native <dialog>, responsive tables, validation hooks
