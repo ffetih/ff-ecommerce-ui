@@ -1,0 +1,159 @@
+:root {
+  /* Raw light / dark palette tokens */
+  --bg-light: #f7f8fa;
+  --bg-dark: #0f1218;
+  --surface-light: #ffffff;
+  --surface-dark: #171c26;
+  --surface-subtle-light: #f0f2f7;
+  --surface-subtle-dark: #1f2634;
+  --border-light: #dce1ec;
+  --border-dark: #2c3547;
+  --text-light: #141925;
+  --text-dark: #edf1f7;
+  --text-muted-light: #525d73;
+  --text-muted-dark: #98a4bc;
+
+  --brand-light: #1d4ed8;
+  --brand-dark: #60a5fa;
+  --brand-hover-light: #1e40af;
+  --brand-hover-dark: #93c5fd;
+  --brand-text-light: #ffffff;
+  --brand-text-dark: #091326;
+  --brand-soft-light: #dbeafe;
+  --brand-soft-dark: #172554;
+
+  --success-light: #15803d;
+  --success-dark: #4ade80;
+  --success-bg-light: #dcfce7;
+  --success-bg-dark: #052e16;
+
+  --warning-light: #b45309;
+  --warning-dark: #fbbf24;
+  --warning-bg-light: #fef3c7;
+  --warning-bg-dark: #332006;
+
+  --danger-light: #b91c1c;
+  --danger-dark: #f87171;
+  --danger-bg-light: #fee2e2;
+  --danger-bg-dark: #3b1014;
+
+  --info-light: #0369a1;
+  --info-dark: #38bdf8;
+  --info-bg-light: #e0f2fe;
+  --info-bg-dark: #082f49;
+
+  --scrollbar-track-light: #e7ebf2;
+  --scrollbar-track-dark: #181e29;
+  --scrollbar-thumb-light: #7c879e;
+  --scrollbar-thumb-dark: #616e87;
+
+  /* Default (light) semantic tokens — fallback for browsers without light-dark() */
+  --bg: var(--bg-light);
+  --surface: var(--surface-light);
+  --surface-subtle: var(--surface-subtle-light);
+  --border: var(--border-light);
+  --text: var(--text-light);
+  --text-muted: var(--text-muted-light);
+  --brand: var(--brand-light);
+  --brand-hover: var(--brand-hover-light);
+  --brand-text: var(--brand-text-light);
+  --brand-soft: var(--brand-soft-light);
+  --success: var(--success-light);
+  --success-bg: var(--success-bg-light);
+  --warning: var(--warning-light);
+  --warning-bg: var(--warning-bg-light);
+  --danger: var(--danger-light);
+  --danger-bg: var(--danger-bg-light);
+  --info: var(--info-light);
+  --info-bg: var(--info-bg-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  /* Fallback for browsers without light-dark() */
+  @media (prefers-color-scheme: dark) {
+    --bg: var(--bg-dark);
+    --surface: var(--surface-dark);
+    --surface-subtle: var(--surface-subtle-dark);
+    --border: var(--border-dark);
+    --text: var(--text-dark);
+    --text-muted: var(--text-muted-dark);
+    --brand: var(--brand-dark);
+    --brand-hover: var(--brand-hover-dark);
+    --brand-text: var(--brand-text-dark);
+    --brand-soft: var(--brand-soft-dark);
+    --success: var(--success-dark);
+    --success-bg: var(--success-bg-dark);
+    --warning: var(--warning-dark);
+    --warning-bg: var(--warning-bg-dark);
+    --danger: var(--danger-dark);
+    --danger-bg: var(--danger-bg-dark);
+    --info: var(--info-dark);
+    --info-bg: var(--info-bg-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  /* Modern adaptive tokens responding to computed color-scheme (system or manual override) */
+  @supports (color: light-dark(white, black)) {
+    --bg: light-dark(var(--bg-light), var(--bg-dark));
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-subtle: light-dark(var(--surface-subtle-light), var(--surface-subtle-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --text: light-dark(var(--text-light), var(--text-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --brand: light-dark(var(--brand-light), var(--brand-dark));
+    --brand-hover: light-dark(var(--brand-hover-light), var(--brand-hover-dark));
+    --brand-text: light-dark(var(--brand-text-light), var(--brand-text-dark));
+    --brand-soft: light-dark(var(--brand-soft-light), var(--brand-soft-dark));
+    --success: light-dark(var(--success-light), var(--success-dark));
+    --success-bg: light-dark(var(--success-bg-light), var(--success-bg-dark));
+    --warning: light-dark(var(--warning-light), var(--warning-dark));
+    --warning-bg: light-dark(var(--warning-bg-light), var(--warning-bg-dark));
+    --danger: light-dark(var(--danger-light), var(--danger-dark));
+    --danger-bg: light-dark(var(--danger-bg-light), var(--danger-bg-dark));
+    --info: light-dark(var(--info-light), var(--info-dark));
+    --info-bg: light-dark(var(--info-bg-light), var(--info-bg-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 6px 20px rgb(0 0 0 / 0.12);
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+  accent-color: var(--brand);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@supports not (scrollbar-color: auto) {
+  :root {
+    scrollbar-width: auto;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
