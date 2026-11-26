@@ -124,11 +124,13 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
     await expect(page.getByRole('heading', { name: 'Admin: Catalog & Stock' })).toBeVisible();
     expect(oidc.authRequests.at(-1)?.prompt).toBe('login');
 
-    // All 6 admin topbar links fit cleanly on a single row at 1280px desktop width
+    // All 6 admin topbar links fit cleanly on a single row without horizontal overflow at 1280px
     const navLinks = page.locator('header nav a');
     await expect(navLinks).toHaveCount(6);
     const ys = await navLinks.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
     expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(4);
+    const hasOverflow = await page.locator('header').evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(hasOverflow).toBe(false);
 
     // Inspect stock counters for KB-MECH-01
     await page.locator('tr', { hasText: 'KB-MECH-01' }).getByRole('button', { name: 'Stock' }).click();
