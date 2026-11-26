@@ -8,9 +8,16 @@ const stripBrowserOrigin: ProxyOptions['configure'] = (proxy) => {
   });
 };
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
+  // *.localtest.me returns both AAAA (::1) and A (127.0.0.1); k3d on WSL2 publishes on IPv4.
+  const dnsModule = 'node:dns';
+  const dns = (await import(/* @vite-ignore */ dnsModule)) as {
+    setDefaultResultOrder?: (order: 'ipv4first' | 'verbatim') => void;
+  };
+  dns.setDefaultResultOrder?.('ipv4first');
+
   const env = loadEnv(mode, '.', '');
-  const gatewayTarget = env.VITE_GATEWAY_URL || 'http://localhost:8080';
+  const gatewayTarget = env.VITE_GATEWAY_URL || 'http://shop.localtest.me:8888';
 
   return {
     plugins: [react()],

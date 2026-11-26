@@ -42,6 +42,12 @@ export const SIMULATED_CARD_TOKENS: readonly SimulatedCardOption[] = [
     label: 'Capture fails at dispatch (tok_capture_fails)',
     outcome: 'Authorizes & confirms, but capture declines at dispatch; order stays SHIPPED and payment becomes OVERDUE.',
   },
+  {
+    token: 'tok_refund_fails',
+    label: 'Refund fails on return (tok_refund_fails)',
+    outcome:
+      'Authorizes and captures normally, but refunds decline when a return is received (return becomes REFUND_FAILED; stock is still restocked).',
+  },
 ];
 
 export function isPaymentInFlight(status?: PaymentStatus): boolean {

@@ -1,5 +1,6 @@
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ExternalLink, RefreshCw } from 'lucide-react';
 import { ApiError } from '../api/types';
+import { jaegerTraceUrl } from '../config/runtimeConfig';
 
 interface ProblemBannerProps {
   error: unknown;
@@ -12,6 +13,7 @@ export function ProblemBanner({ error, onRetry, retryLabel = 'Retry' }: ProblemB
 
   if (error instanceof ApiError) {
     const tone = error.status === 503 || error.status === 504 ? 'banner-warning' : 'banner-danger';
+    const traceUrl = error.traceId ? jaegerTraceUrl(error.traceId) : null;
     return (
       <div className={`banner ${tone}`} role="alert">
         <div className="row-between">
@@ -22,12 +24,20 @@ export function ProblemBanner({ error, onRetry, retryLabel = 'Retry' }: ProblemB
               {error.status > 0 ? ` (${error.status})` : ''}
             </strong>
           </div>
-          {onRetry ? (
-            <button type="button" className="btn btn-sm" onClick={onRetry}>
-              <RefreshCw size={14} aria-hidden="true" />
-              {retryLabel}
-            </button>
-          ) : null}
+          <div className="row" style={{ gap: '0.4rem' }}>
+            {traceUrl ? (
+              <a href={traceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm">
+                <ExternalLink size={13} aria-hidden="true" />
+                Trace
+              </a>
+            ) : null}
+            {onRetry ? (
+              <button type="button" className="btn btn-sm" onClick={onRetry}>
+                <RefreshCw size={14} aria-hidden="true" />
+                {retryLabel}
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="banner-body">
           {error.problem.detail || error.message}

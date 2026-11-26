@@ -1,15 +1,20 @@
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, KeyRound, Minus, Plus, RotateCw, ShoppingBag, Trash2 } from 'lucide-react';
+import { CreditCard, ExternalLink, KeyRound, Minus, Plus, RotateCw, ShoppingBag, Trash2 } from 'lucide-react';
 import { useCart } from './cartContext';
 import { placeOrder, type Order } from '../orders/api';
 import { SIMULATED_CARD_TOKENS } from '../payments/model';
 import { useAuth } from '../auth/authContext';
+import { jaegerTraceUrl } from '../../shared/config/runtimeConfig';
+import { CopyButton } from '../../shared/ui/CopyButton';
 import { ProblemBanner } from '../../shared/ui/ProblemBanner';
 import { ResponsiveTable } from '../../shared/ui/ResponsiveTable';
 import { useToast } from '../../shared/ui/ToastRegion';
-import { useAccessibleValidation } from '../../shared/ui/useAccessibleValidation';
+import {
+  useAccessibleValidation,
+  validateAndFocusFirstInvalid,
+} from '../../shared/ui/useAccessibleValidation';
 import { formatMoney } from '../../shared/utils/format';
 import { ApiError } from '../../shared/api/types';
 
@@ -22,10 +27,16 @@ export function CartPage() {
   const navigate = useNavigate();
 
   const [shippingAddress, setShippingAddress] = useState('');
-  const [lastPlaced, setLastPlaced] = useState<{ order: Order; replayed: boolean; keyUsed: string } | null>(null);
+  const [lastPlaced, setLastPlaced] = useState<{
+    order: Order;
+    replayed: boolean;
+    keyUsed: string;
+    traceId: string;
+  } | null>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
   useAccessibleValidation(formRef);
+  const idemCodeId = useId();
   const cardId = useId();
   const cardHintId = useId();
   const addressId = useId();
@@ -57,6 +68,7 @@ export function CartPage() {
         order: result.data,
         replayed: result.headers.idempotentReplayed,
         keyUsed,
+        traceId: result.headers.traceId,
       });
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
       notify(
@@ -70,10 +82,12 @@ export function CartPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!event.currentTarget.checkValidity()) return;
+    if (!validateAndFocusFirstInvalid(event.currentTarget)) return;
     if (items.length === 0 || hasMixedCurrencies) return;
     placeMutation.mutate(idempotencyKey);
   }
+
+  const placedTraceUrl = lastPlaced ? jaegerTraceUrl(lastPlaced.traceId) : null;
 
   return (
     <div className="stack-lg">
@@ -100,6 +114,17 @@ export function CartPage() {
                 : 'Order created (201 Created)'}
             </strong>
             <div className="row">
+              {placedTraceUrl ? (
+                <a
+                  href={placedTraceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm"
+                >
+                  <ExternalLink size={14} aria-hidden="true" />
+                  Open trace in Jaeger
+                </a>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-sm"
@@ -225,18 +250,23 @@ export function CartPage() {
                   <KeyRound size={14} aria-hidden="true" />
                   Idempotency-Key
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => {
-                    rotateIdempotencyKey();
-                    setLastPlaced(null);
-                  }}
-                >
-                  New UUID
-                </button>
+                <div className="row" style={{ gap: '0.35rem' }}>
+                  <CopyButton targetId={idemCodeId} label="Copy order idempotency key" />
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      rotateIdempotencyKey();
+                      setLastPlaced(null);
+                    }}
+                  >
+                    New UUID
+                  </button>
+                </div>
               </div>
-              <code style={{ wordBreak: 'break-all' }}>{idempotencyKey}</code>
+              <code id={idemCodeId} style={{ wordBreak: 'break-all' }}>
+                {idempotencyKey}
+              </code>
             </div>
 
             {placeMutation.error ? (

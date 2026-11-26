@@ -7,16 +7,18 @@ import {
 } from '../fixtures/liveKeycloak';
 
 /**
- * Live full-stack smoke suite against the real local stack:
- * - Keycloak (:8180, realm `ecommerce`, client `shop`)
- * - Gateway (:8080) + catalog/customer/order/shipping services + Kafka + PostgreSQL
+ * Live full-stack smoke suite against the real k3d/Flux cluster (default: *.localtest.me:8888)
+ * or Docker Compose (`npm run dev:compose`):
+ * - Keycloak (`keycloak.localtest.me:8888`, realm `ecommerce`, client `shop`)
+ * - Gateway (`shop.localtest.me:8888`) + all 5 backend services + Kafka + PostgreSQL + Jaeger
  *
  * Run with: npm run test:e2e:live
  */
-test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Saga)', () => {
+test.describe.serial('Live full-stack smoke (k3d/Flux + Keycloak PKCE + Saga + Payments + Returns)', () => {
   const runSuffix = Date.now().toString(36).toUpperCase().slice(-6);
   const sku = `E2E-${runSuffix}`;
   const productName = `Playwright Smoke Item ${runSuffix}`;
+  let deliveredOrderId = '';
   let cancelledOrderPath = '';
 
   test('1. admin creates a product and books initial stock', async ({ page }) => {
@@ -41,7 +43,7 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await signOutFromHeader(page);
   });
 
-  test('2. guest cart survives Keycloak PKCE login and order completes PLACED -> CONFIRMED -> DELIVERED', async ({
+  test('2. guest cart survives Keycloak PKCE login and 2-unit order completes PLACED -> CONFIRMED -> DELIVERED', async ({
     page,
   }) => {
     await page.goto('/');
@@ -51,6 +53,10 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await expect(productCard).toBeVisible({ timeout: 10_000 });
     await productCard.getByRole('button', { name: /add to cart/i }).click();
     await page.getByRole('link', { name: /Cart \(1\)/i }).click();
+
+    // Increase quantity to 2 so test 3 can verify partial return + reject
+    await page.getByRole('button', { name: `Increase quantity for ${sku}` }).click();
+    await expect(page.locator('header').getByRole('link', { name: /Cart\s*2/i })).toBeVisible();
 
     // Sign in via real Keycloak PKCE flow and verify cart is preserved on return
     await page.getByRole('button', { name: /Sign in with Keycloak to place order/i }).click();
@@ -66,10 +72,11 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await page.locator('header').getByRole('link', { name: /Cart/i }).click();
     await page.getByRole('button', { name: 'Place order', exact: true }).click();
     await expect(page.getByText('Order created (201 Created)')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('link', { name: 'Open trace in Jaeger' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Track order saga', exact: true }).click();
     await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+$/);
-    const orderId = new URL(page.url()).pathname.split('/').pop()!;
+    deliveredOrderId = new URL(page.url()).pathname.split('/').pop()!;
 
     // Wait for async Kafka reservation + payment authorization -> CONFIRMED + AUTHORIZED
     await expect(page.locator('.page-header').getByText('CONFIRMED', { exact: true })).toBeVisible({
@@ -82,7 +89,7 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     // Switch to admin to dispatch and deliver the shipment
     await signInAs(page, 'admin');
     await page.getByRole('link', { name: 'Operations', exact: true }).click();
-    await page.getByLabel('Order ID', { exact: true }).fill(orderId);
+    await page.getByLabel('Order ID', { exact: true }).fill(deliveredOrderId);
     await page.getByRole('button', { name: 'Inspect', exact: true }).click();
 
     const dispatchBtn = page.getByRole('button', { name: 'Dispatch parcel', exact: true });
@@ -95,7 +102,7 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
 
     // Open full order detail (SPA route), then switch back to Alice so returnTo lands directly on /orders/:id
     await page.getByRole('link', { name: 'Open full order page', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/orders/${orderId}$`));
+    await expect(page).toHaveURL(new RegExp(`/orders/${deliveredOrderId}$`));
     await signInAs(page, 'alice');
     await expect(page.locator('.page-header').getByText('DELIVERED', { exact: true })).toBeVisible({
       timeout: 20_000,
@@ -106,7 +113,67 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await signOutFromHeader(page);
   });
 
-  test('3. s06/s08 async cancellation (202 -> CANCELLED + VOIDED) and Bob ownership isolation (404)', async ({
+  test('3. s09 partial return -> admin receive -> REFUNDED + catalog restock, and reject releases quota', async ({
+    page,
+  }) => {
+    await page.goto(`/orders/${deliveredOrderId}`);
+    await page.getByRole('button', { name: 'Sign in with Keycloak' }).click();
+    await completeKeycloakLogin(page, 'alice');
+
+    await expect(page.getByText('0 / 2 returned')).toBeVisible({ timeout: 10_000 });
+
+    // Alice requests a partial return of 1 unit
+    await page.getByRole('button', { name: 'Request return', exact: true }).click();
+    const requestDialog = page.locator('dialog[open]');
+    await expect(requestDialog.getByLabel(sku)).toHaveAttribute('max', '2');
+    await requestDialog.getByLabel(sku).fill('1');
+    await requestDialog.getByLabel('Return reason').fill('Playwright live partial return');
+    await requestDialog.getByRole('button', { name: 'Submit return request' }).click();
+
+    await expect(page.getByText('Return requested (201 Created)')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 / 2 returned')).toBeVisible({ timeout: 10_000 });
+
+    // Alice also requests a return for the 2nd unit so admin can reject it
+    await page.getByRole('button', { name: 'Request return', exact: true }).click();
+    await expect(requestDialog.getByLabel(sku)).toHaveAttribute('max', '1');
+    await requestDialog.getByLabel('Return reason').fill('Playwright live rejected return');
+    await requestDialog.getByRole('button', { name: 'Submit return request' }).click();
+
+    await expect(page.getByText('2 / 2 returned')).toBeVisible({ timeout: 10_000 });
+
+    // Switch directly to admin on the same order page -> receive first, reject second
+    await signInAs(page, 'admin');
+    await expect(page).toHaveURL(new RegExp(`/orders/${deliveredOrderId}$`));
+
+    const receiveRow = page.locator('tr', { hasText: 'Playwright live partial return' });
+    await receiveRow.getByRole('button', { name: 'Mark received' }).click();
+    await expect(receiveRow.getByText('REFUNDED', { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    const rejectRow = page.locator('tr', { hasText: 'Playwright live rejected return' });
+    await rejectRow.getByRole('button', { name: 'Reject' }).click();
+    const rejectDialog = page.locator('dialog[open]');
+    await rejectDialog.getByLabel('Rejection reason').fill('Parcel not returned');
+    await rejectDialog.getByRole('button', { name: 'Confirm rejection' }).click();
+
+    await expect(rejectRow.getByText('REJECTED', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 / 2 returned')).toBeVisible({ timeout: 10_000 });
+
+    // Verify catalog restocked 1 unit (10 received - 2 dispatched + 1 returned = 9 onHand)
+    await page.getByRole('link', { name: 'Admin Catalog', exact: true }).click();
+    await page.locator('tr', { hasText: sku }).getByRole('button', { name: 'Stock' }).click();
+    await expect(page.locator('.kpi-box', { hasText: 'On Hand' }).getByText('9', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Verify Protocol Inspector shows live W3C traceId and Jaeger deep link
+    await page.getByRole('button', { name: /Inspector/i }).click();
+    await expect(
+      page.locator('aside[aria-label="Protocol inspector"] a', { hasText: 'Open in Jaeger' }),
+    ).toBeVisible();
+    await signOutFromHeader(page);
+  });
+
+  test('4. s06/s08 async cancellation (202 -> CANCELLED + VOIDED) and Bob ownership isolation (404)', async ({
     page,
   }) => {
     await page.goto('/');
@@ -146,7 +213,7 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await signOutFromHeader(page);
   });
 
-  test('4. s08 declined card (tok_decline) cancels order and releases stock', async ({ page }) => {
+  test('5. s08 declined card (tok_decline) cancels order and releases stock', async ({ page }) => {
     await page.goto('/');
     await signInAs(page, 'alice');
 

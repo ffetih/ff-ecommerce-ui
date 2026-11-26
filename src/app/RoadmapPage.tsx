@@ -1,4 +1,5 @@
-import { CheckCircle2, Clock } from 'lucide-react';
+import { Activity, CheckCircle2, Cloud, ExternalLink } from 'lucide-react';
+import { getObservabilityLinks, getRuntimeConfig } from '../shared/config/runtimeConfig';
 import { ResponsiveTable } from '../shared/ui/ResponsiveTable';
 import { StatusBadge } from '../shared/ui/StatusBadge';
 
@@ -25,43 +26,64 @@ const SPRINT_MODULES = [
     uiModule: 'features/payments + CartPage cardToken + OrderDetailPage paymentStatus',
     status: 'ACTIVE',
     notes:
-      'Simulated cardToken selector (tok_ok, tok_decline, tok_slow, tok_capture_fails) rotating Idempotency-Key on change; live paymentStatus badges, "Waiting for payment" slow-provider notice, and OVERDUE back-office alert.',
+      'Simulated cardToken selector (tok_ok, tok_decline, tok_slow, tok_capture_fails, tok_refund_fails) rotating Idempotency-Key on change; live paymentStatus badges, "Waiting for payment" slow-provider notice, and OVERDUE alert.',
   },
   {
-    sprint: 's09 Returns',
-    domain: 'Concurrency-safe return limits + payment refunds',
-    uiModule: 'features/returns (extension slot)',
-    status: 'PLACED',
+    sprint: 's09 Returns (Live in UI)',
+    domain: 'Concurrency-safe return limits + payment refunds (ADR-0010)',
+    uiModule: 'features/returns + OrderDetailPage + AdminOperationsPage',
+    status: 'ACTIVE',
     notes:
-      'Add "Request return" action on DELIVERED orders with per-line remaining quantity limits and admin approval view.',
+      'Request partial/full returns on DELIVERED + CAPTURED orders with per-SKU returnedUnits quota clamping and fresh Idempotency-Key; admin Mark received / Reject actions, direct Return ID lookup, RECEIVED -> REFUNDED polling, and REFUND_FAILED alert.',
   },
   {
-    sprint: 's10 Observability',
-    domain: 'Metrics, distributed tracing, dashboards',
-    uiModule: 'ProtocolInspector + traceparent propagation',
-    status: 'PLACED',
+    sprint: 's10 Observability (Live in UI)',
+    domain: 'OpenTelemetry traces, Prometheus, Grafana & alerts (ADR-0011)',
+    uiModule: 'shared/utils/trace + httpClient + ProtocolInspector',
+    status: 'ACTIVE',
     notes:
-      'Propagate W3C traceparent headers from httpClient and link traces to Grafana/Tempo.',
+      'Every API call emits a sampled W3C traceparent header so browser requests, gateway, outbox, Kafka, and downstream services share one Jaeger trace; Protocol Inspector and confirmation banners link straight into Jaeger, Grafana, Prometheus, Alertmanager, and Mailpit.',
   },
   {
-    sprint: 's11 Packaging',
-    domain: 'Containers, Compose full stack, K8s',
-    uiModule: 'Dockerfile (Nginx same-origin /api proxy)',
+    sprint: 's11 Packaging (Live in UI)',
+    domain: 'Immutable container images & one-command Compose (ADR-0012)',
+    uiModule: 'Dockerfile + docker/nginx.conf.template + docker/30-runtime-env.sh',
+    status: 'ACTIVE',
+    notes:
+      'Unprivileged multi-stage Nginx image proxying /api/* same-origin (stripping Origin/Referer), SPA /callback fallback, /healthz probe, and runtime window.__APP_CONFIG__ injection so one image runs in Compose or Kubernetes.',
+  },
+  {
+    sprint: 's12 Kubernetes & GitOps (Live in UI)',
+    domain: 'k3d cluster synced by Flux, Traefik *.localtest.me:8888, Kafka ACLs (ADR-0013)',
+    uiModule: 'shared/config/runtimeConfig + vite.config.ts (IPv4-first proxy)',
+    status: 'ACTIVE',
+    notes:
+      'Defaults target the k3d/Flux Traefik entry points (shop.localtest.me:8888 & keycloak.localtest.me:8888) with IPv4-first DNS resolution for WSL2; switch back to Docker Compose anytime with `npm run dev:compose`.',
+  },
+  {
+    sprint: 's13+ Optional',
+    domain: 'Marketplace sellers, promotions, back-in-stock notifications',
+    uiModule: 'features/{marketplace, promotions} (future slot)',
     status: 'PLACED',
     notes:
-      'Serve the static console behind the same origin as the API gateway and point VITE_OIDC_AUTHORITY to the deployment realm.',
+      'Reserved extension slots when multi-seller split orders or promotions are introduced on the backend.',
   },
 ];
 
 export function RoadmapPage() {
+  const config = getRuntimeConfig();
+  const observabilityLinks = getObservabilityLinks(config);
+
   return (
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <h1>Architecture &amp; Sprint Extension Map</h1>
+          <h1>Architecture &amp; Sprint Coverage Map (s00 – s12)</h1>
           <p className="page-subtitle">
-            This frontend mirrors the backend&apos;s bounded contexts so each upcoming sprint plugs in
-            as a self-contained vertical slice under <code>src/features/</code>.
+            This frontend mirrors the backend&apos;s bounded contexts as vertical slices under{' '}
+            <code>src/features/</code> and connects directly to either the local{' '}
+            <strong>k3d + Flux</strong> cluster (<code>*.localtest.me:8888</code>) or{' '}
+            <strong>Docker Compose</strong>.
           </p>
         </div>
       </div>
@@ -70,31 +92,49 @@ export function RoadmapPage() {
         <div className="card stack-sm">
           <div className="row">
             <CheckCircle2 size={18} aria-hidden="true" />
-            <h2 className="card-title">Same-Origin API Proxy</h2>
+            <h2 className="card-title">Same-Origin Proxy &amp; PKCE</h2>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-            Vite proxies <code>/api</code> to the routing-only Gateway (<code>:8080</code>) so the
-            browser never makes cross-origin API calls, preserving backend deny-by-default rules
-            without CORS relaxation (ADR-0008).
+            Vite (and production Nginx) proxy <code>/api/*</code> same-origin while stripping{' '}
+            <code>Origin</code>/<code>Referer</code> so backend deny-by-default rules stay intact
+            (ADR-0008). Sign-in uses <code>oidc-client-ts</code> PKCE (<code>S256</code>) against{' '}
+            <code>{config.oidcAuthority}</code> (client <code>{config.oidcClientId}</code>).
           </p>
         </div>
 
         <div className="card stack-sm">
           <div className="row">
-            <Clock size={18} aria-hidden="true" />
-            <h2 className="card-title">PKCE + In-Memory Tokens</h2>
+            <Cloud size={18} aria-hidden="true" />
+            <h2 className="card-title">k3d + Flux &amp; Observability</h2>
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-            Sign-in uses <code>oidc-client-ts</code> Authorization Code + PKCE (<code>S256</code>)
-            directly against Keycloak&apos;s public <code>shop</code> client (no password form).
-            Tokens stay strictly in memory, renew before expiry, and are never sent expired.
+            Every request carries a W3C <code>traceparent</code> header into the gateway so traces
+            flow end-to-end through the outbox and Kafka into Jaeger (ADR-0011, ADR-0013).
           </p>
+          {observabilityLinks.length > 0 ? (
+            <div className="row" style={{ marginTop: '0.25rem', gap: '0.4rem' }}>
+              <Activity size={14} aria-hidden="true" />
+              {observabilityLinks.map((tool) => (
+                <a
+                  key={tool.id}
+                  href={tool.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm"
+                  title={tool.description}
+                >
+                  <ExternalLink size={12} aria-hidden="true" />
+                  {tool.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
       <ResponsiveTable
         caption="UI feature coverage aligned with backend sprints"
-        headers={['Sprint', 'Capability', 'Frontend Module', 'State', 'Integration Plan']}
+        headers={['Sprint', 'Capability', 'Frontend Module', 'State', 'Integration Details']}
       >
         {SPRINT_MODULES.map((row) => (
           <tr key={row.sprint}>
@@ -106,7 +146,7 @@ export function RoadmapPage() {
             <td data-label="State">
               <StatusBadge status={row.status === 'ACTIVE' ? 'ACTIVE' : 'CREATED'} />
             </td>
-            <td data-label="Integration Plan">{row.notes}</td>
+            <td data-label="Integration Details">{row.notes}</td>
           </tr>
         ))}
       </ResponsiveTable>

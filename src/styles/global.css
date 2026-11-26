@@ -780,6 +780,79 @@ dialog.modal-dialog::backdrop {
   border-radius: var(--radius-md);
 }
 
+/* --- Copy button & live feedback bubble ------------------------------------------------ */
+
+.copy-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  vertical-align: middle;
+}
+
+.copy-button {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  padding: 0.25rem 0.4rem;
+}
+
+.copy-button .copy-icon-done {
+  display: none;
+}
+
+.copy-button[data-copied] .copy-icon-default {
+  display: none;
+}
+
+.copy-button[data-copied] .copy-icon-done {
+  display: inline-block;
+  color: var(--success);
+}
+
+.copy-button[data-failed] {
+  color: var(--danger);
+}
+
+/* Visible state toggles opacity only so screen readers keep announcing role="status". */
+.copy-tip {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.copy-button[data-copied] + .copy-tip {
+  color: var(--success);
+  opacity: 1;
+}
+
+.copy-button[data-failed] + .copy-tip {
+  color: var(--danger);
+  opacity: 1;
+}
+
+/* --- Return line quantity picker ------------------------------------------------------- */
+
+.return-line-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.return-qty-input {
+  width: 5rem;
+  text-align: center;
+  font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

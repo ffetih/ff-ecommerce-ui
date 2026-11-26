@@ -1,4 +1,5 @@
 import { newUuid } from '../utils/format';
+import { extractTraceId, generateTraceContext } from '../utils/trace';
 import { ApiError, type ApiResult, type HttpTraceEntry, type ProblemDetail } from './types';
 
 type TokenProvider = () => string | null | Promise<string | null>;
@@ -54,6 +55,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers.set('Content-Type', 'application/json');
   }
 
+  // Propagate W3C traceparent so browser calls, gateway, outbox, and Kafka share one Jaeger trace (s10).
+  const existingTraceparent = headers.get('traceparent');
+  const generatedTrace = existingTraceparent ? null : generateTraceContext();
+  const traceparent = existingTraceparent ?? generatedTrace!.traceparent;
+  const traceId = extractTraceId(traceparent) ?? generatedTrace?.traceId ?? '';
+  if (!existingTraceparent) {
+    headers.set('traceparent', traceparent);
+  }
+
   const token = options.skipAuth ? null : await tokenProvider();
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
@@ -76,7 +86,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       status: 0,
       detail:
         networkError instanceof Error
-          ? `${networkError.message}. Is the gateway running on http://localhost:8080?`
+          ? `${networkError.message}. Is the gateway reachable (k3d: http://shop.localtest.me:8888 or compose: http://localhost:8080)?`
           : 'Unable to reach the gateway.',
       instance: path,
     };
@@ -87,10 +97,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       path,
       status: 0,
       durationMs,
+      traceId,
+      traceparent,
       idempotencyKey: headers.get('Idempotency-Key') ?? undefined,
       problem,
     });
-    throw new ApiError(0, problem, { retryAfter: null, wwwAuthenticate: null });
+    throw new ApiError(0, problem, { retryAfter: null, wwwAuthenticate: null, traceId });
   }
 
   const durationMs = Math.round(performance.now() - startedAt);
@@ -127,6 +139,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       path,
       status: response.status,
       durationMs,
+      traceId,
+      traceparent,
       idempotencyKey: headers.get('Idempotency-Key') ?? undefined,
       retryAfter,
       wwwAuthenticate,
@@ -135,7 +149,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (response.status === 401 && token && unauthorizedHandler) {
       unauthorizedHandler();
     }
-    throw new ApiError(response.status, problem, { retryAfter, wwwAuthenticate });
+    throw new ApiError(response.status, problem, { retryAfter, wwwAuthenticate, traceId });
   }
 
   recordTrace({
@@ -145,6 +159,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     path,
     status: response.status,
     durationMs,
+    traceId,
+    traceparent,
     idempotencyKey: headers.get('Idempotency-Key') ?? undefined,
     idempotentReplayed,
     retryAfter,
@@ -158,6 +174,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       idempotentReplayed,
       retryAfter,
       wwwAuthenticate,
+      traceId,
+      traceparent,
     },
   };
 }

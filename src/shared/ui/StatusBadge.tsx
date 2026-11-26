@@ -27,6 +27,12 @@ const TONE_MAP: Record<string, string> = {
   CAPTURING: 'badge-info',
   CAPTURED: 'badge-success',
   OVERDUE: 'badge-danger',
+  // Return statuses (s09)
+  REQUESTED: 'badge-warning',
+  RECEIVED: 'badge-info',
+  REFUNDED: 'badge-success',
+  REFUND_FAILED: 'badge-danger',
+  REJECTED: 'badge-danger',
   // Active flags / roles
   ACTIVE: 'badge-success',
   INACTIVE: 'badge-danger',
@@ -35,6 +41,7 @@ const TONE_MAP: Record<string, string> = {
   admin: 'badge-warning',
   customer: 'badge-brand',
   service: 'badge-info',
+  monitoring: 'badge-info',
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

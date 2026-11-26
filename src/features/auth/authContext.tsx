@@ -15,10 +15,9 @@ import {
   type User,
 } from 'oidc-client-ts';
 import { configureHttpClient } from '../../shared/api/httpClient';
+import { getRuntimeConfig } from '../../shared/config/runtimeConfig';
 import { decodeJwtPayload, extractAudiences, extractRoles, type DecodedJwt } from '../../shared/utils/jwt';
 
-const DEFAULT_AUTHORITY = 'http://localhost:8180/realms/ecommerce';
-const DEFAULT_CLIENT_ID = 'shop';
 const REFRESH_BUFFER_MS = 30_000;
 const EXPIRY_SAFETY_MS = 5_000;
 
@@ -86,13 +85,12 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function getOidcConfig(origin = window.location.origin) {
-  const authority = (import.meta.env.VITE_OIDC_AUTHORITY || DEFAULT_AUTHORITY).replace(/\/$/, '');
-  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID || DEFAULT_CLIENT_ID;
+  const { oidcAuthority, oidcClientId } = getRuntimeConfig();
   const cleanOrigin = origin.replace(/\/$/, '');
 
   return {
-    authority,
-    client_id: clientId,
+    authority: oidcAuthority,
+    client_id: oidcClientId,
     redirect_uri: `${cleanOrigin}/callback`,
     post_logout_redirect_uri: `${cleanOrigin}/`,
     response_type: 'code',
@@ -312,7 +310,7 @@ export function AuthProvider({
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unable to start Keycloak sign-in.';
         setAuthError(
-          `${message} Ensure Keycloak is running at ${authority} and has imported the "${clientId}" client (docker compose up -d --force-recreate keycloak).`,
+          `${message} Ensure Keycloak is running at ${authority} and has imported the "${clientId}" client (k3d/Flux cluster or Docker Compose).`,
         );
         setAuthBusy(false);
       }

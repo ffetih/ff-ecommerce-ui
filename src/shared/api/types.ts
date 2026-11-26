@@ -19,6 +19,8 @@ export interface ApiResult<T> {
     idempotentReplayed: boolean;
     retryAfter: string | null;
     wwwAuthenticate: string | null;
+    traceId: string;
+    traceparent: string;
   };
 }
 
@@ -27,11 +29,12 @@ export class ApiError extends Error {
   readonly problem: ProblemDetail;
   readonly retryAfter: string | null;
   readonly wwwAuthenticate: string | null;
+  readonly traceId?: string;
 
   constructor(
     status: number,
     problem: ProblemDetail,
-    headers: { retryAfter: string | null; wwwAuthenticate: string | null },
+    headers: { retryAfter: string | null; wwwAuthenticate: string | null; traceId?: string },
   ) {
     super(problem.detail || problem.title || `HTTP ${status}`);
     this.name = 'ApiError';
@@ -39,6 +42,7 @@ export class ApiError extends Error {
     this.problem = problem;
     this.retryAfter = headers.retryAfter;
     this.wwwAuthenticate = headers.wwwAuthenticate;
+    this.traceId = headers.traceId;
   }
 }
 
@@ -49,6 +53,8 @@ export interface HttpTraceEntry {
   path: string;
   status: number;
   durationMs: number;
+  traceId: string;
+  traceparent: string;
   idempotencyKey?: string;
   idempotentReplayed?: boolean;
   retryAfter?: string | null;

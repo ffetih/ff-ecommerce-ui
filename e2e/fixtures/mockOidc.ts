@@ -34,7 +34,7 @@ export const PERSONAS: Record<MockPersona, PersonaProfile> = {
   },
 };
 
-const AUTHORITY = 'http://localhost:8180/realms/ecommerce';
+const AUTHORITY = 'http://keycloak.localtest.me:8888/realms/ecommerce';
 
 function base64Url(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -177,7 +177,7 @@ export async function installMockOidc(
       preferred_username: profile.username,
       name: profile.name,
       email: profile.email,
-      aud: ['catalog-service', 'customer-service', 'order-service', 'shipping-service'],
+      aud: ['catalog-service', 'customer-service', 'order-service', 'shipping-service', 'payment-service'],
       realm_access: { roles: profile.roles },
       iat: now,
       exp,

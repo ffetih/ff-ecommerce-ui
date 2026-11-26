@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Activity, Trash2, X } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { Activity, ExternalLink, Trash2, X } from 'lucide-react';
 import { clearHttpTraces, subscribeHttpTraces } from '../../shared/api/httpClient';
 import type { HttpTraceEntry } from '../../shared/api/types';
+import { getObservabilityLinks, jaegerTraceUrl } from '../../shared/config/runtimeConfig';
+import { CopyButton } from '../../shared/ui/CopyButton';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { formatDateTime } from '../../shared/utils/format';
 import { useAuth } from './authContext';
@@ -14,18 +16,24 @@ interface ProtocolInspectorProps {
 /**
  * Live developer dock visualizing the distributed-system contract in real time:
  * - Active JWT claims (sub, roles, audiences, expiry)
- * - HTTP trace log with status, Idempotency-Key, Idempotent-Replayed, Retry-After, and RFC 9457 bodies
+ * - HTTP trace log with status, W3C traceparent/traceId (Jaeger deep links),
+ *   Idempotency-Key, Idempotent-Replayed, Retry-After, and RFC 9457 ProblemDetails
+ * - Quick links to cluster/local observability tools (Jaeger, Grafana, Prometheus, Alertmanager, Mailpit)
  */
 export function ProtocolInspector({ open, onClose }: ProtocolInspectorProps) {
   const { session, authority } = useAuth();
   const [traces, setTraces] = useState<HttpTraceEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const traceIdCodeId = useId();
+  const idemCodeId = useId();
 
   useEffect(() => subscribeHttpTraces(setTraces), []);
 
   if (!open) return null;
 
   const selected = traces.find((t) => t.id === selectedId) ?? traces[0] ?? null;
+  const observabilityLinks = getObservabilityLinks();
+  const selectedJaegerUrl = selected?.traceId ? jaegerTraceUrl(selected.traceId) : null;
 
   return (
     <aside className="inspector-panel" aria-label="Protocol inspector">
@@ -35,7 +43,7 @@ export function ProtocolInspector({ open, onClose }: ProtocolInspectorProps) {
             <Activity size={17} aria-hidden="true" />
             <strong>Protocol Inspector</strong>
             <span className="muted" style={{ fontSize: '0.84rem' }}>
-              JWT claims, Idempotency headers, and RFC 9457 ProblemDetails
+              JWT claims, W3C traceparent, Idempotency headers, and RFC 9457 ProblemDetails
             </span>
           </div>
           <div className="row">
@@ -48,6 +56,27 @@ export function ProtocolInspector({ open, onClose }: ProtocolInspectorProps) {
             </button>
           </div>
         </div>
+
+        {observabilityLinks.length > 0 ? (
+          <div className="row" style={{ fontSize: '0.82rem' }}>
+            <span className="muted" style={{ fontWeight: 600 }}>
+              Observability:
+            </span>
+            {observabilityLinks.map((tool) => (
+              <a
+                key={tool.id}
+                href={tool.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-sm"
+                title={tool.description}
+              >
+                <ExternalLink size={12} aria-hidden="true" />
+                {tool.label}
+              </a>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid-2">
           <div className="card stack-sm" style={{ padding: '0.9rem' }}>
@@ -145,6 +174,49 @@ export function ProtocolInspector({ open, onClose }: ProtocolInspectorProps) {
                 })}
               </div>
             )}
+
+            {selected ? (
+              <div
+                className="stack-sm"
+                style={{
+                  padding: '0.6rem 0.7rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--surface-subtle)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <div className="row-between">
+                  <div className="row" style={{ gap: '0.35rem' }}>
+                    <span className="muted">traceId:</span>
+                    <code id={traceIdCodeId} style={{ wordBreak: 'break-all' }}>
+                      {selected.traceId}
+                    </code>
+                    <CopyButton targetId={traceIdCodeId} label="Copy trace ID" />
+                  </div>
+                  {selectedJaegerUrl ? (
+                    <a
+                      href={selectedJaegerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-sm"
+                    >
+                      <ExternalLink size={12} aria-hidden="true" />
+                      Open in Jaeger
+                    </a>
+                  ) : null}
+                </div>
+                {selected.idempotencyKey ? (
+                  <div className="row" style={{ gap: '0.35rem' }}>
+                    <span className="muted">Idempotency-Key:</span>
+                    <code id={idemCodeId} style={{ wordBreak: 'break-all' }}>
+                      {selected.idempotencyKey}
+                    </code>
+                    <CopyButton targetId={idemCodeId} label="Copy request idempotency key" />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {selected?.problem ? (
               <pre
                 style={{

@@ -83,3 +83,14 @@ export function useAccessibleValidation(formRef: RefObject<HTMLFormElement | nul
     };
   }, [formRef]);
 }
+
+/**
+ * Runs constraint validation on a `noValidate` form and routes keyboard/screen-reader focus
+ * to the first invalid control when submission fails.
+ */
+export function validateAndFocusFirstInvalid(form: HTMLFormElement): boolean {
+  if (form.checkValidity()) return true;
+  const firstInvalid = form.querySelector<HTMLElement>(':invalid');
+  firstInvalid?.focus();
+  return false;
+}

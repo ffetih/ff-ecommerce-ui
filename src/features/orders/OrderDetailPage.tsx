@@ -5,13 +5,18 @@ import { ArrowLeft, Ban, RefreshCw } from 'lucide-react';
 import { cancelOrder, getOrder, isOrderInFlight } from './api';
 import { SagaTimeline } from './SagaTimeline';
 import { customerPaymentLabel, paymentStatusDescription } from '../payments/model';
+import { OrderReturnsSection } from '../returns/OrderReturnsSection';
 import { useAuth } from '../auth/authContext';
+import { CopyButton } from '../../shared/ui/CopyButton';
 import { ModalDialog } from '../../shared/ui/ModalDialog';
 import { ProblemBanner } from '../../shared/ui/ProblemBanner';
 import { ResponsiveTable } from '../../shared/ui/ResponsiveTable';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { useToast } from '../../shared/ui/ToastRegion';
-import { useAccessibleValidation } from '../../shared/ui/useAccessibleValidation';
+import {
+  useAccessibleValidation,
+  validateAndFocusFirstInvalid,
+} from '../../shared/ui/useAccessibleValidation';
 import { formatDateTime, formatMoney } from '../../shared/utils/format';
 
 const POLL_BACKOFF_MS = [500, 1000, 1500, 2000, 3000] as const;
@@ -34,6 +39,7 @@ export function OrderDetailPage() {
 
   const formRef = useRef<HTMLFormElement>(null);
   useAccessibleValidation(formRef);
+  const orderCodeId = useId();
   const reasonId = useId();
   const reasonErrId = useId();
 
@@ -112,7 +118,7 @@ export function OrderDetailPage() {
 
   function handleCancelSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!event.currentTarget.checkValidity()) return;
+    if (!validateAndFocusFirstInvalid(event.currentTarget)) return;
     cancelMutation.mutate();
   }
 
@@ -160,7 +166,12 @@ export function OrderDetailPage() {
               <span className="badge badge-info">Auto-polling saga…</span>
             ) : null}
           </div>
-          <code className="muted">{orderId}</code>
+          <div className="row" style={{ gap: '0.35rem' }}>
+            <code id={orderCodeId} className="muted">
+              {orderId}
+            </code>
+            <CopyButton targetId={orderCodeId} label="Copy order ID" />
+          </div>
         </div>
         <div className="row">
           <button
@@ -293,6 +304,8 @@ export function OrderDetailPage() {
               </tr>
             ))}
           </ResponsiveTable>
+
+          <OrderReturnsSection order={order} />
         </>
       ) : null}
 
