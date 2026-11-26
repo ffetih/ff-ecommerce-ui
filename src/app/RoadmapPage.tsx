@@ -4,23 +4,31 @@ import { StatusBadge } from '../shared/ui/StatusBadge';
 
 const SPRINT_MODULES = [
   {
-    sprint: 's01 – s06 (Live now)',
+    sprint: 's01 – s06 (Live in UI)',
     domain: 'Catalog, Customer, Order Saga, Security, Gateway',
     uiModule: 'features/{auth, catalog, cart, customer, orders, shipping}',
     status: 'ACTIVE',
     notes:
-      'Public catalog, Keycloak PKCE (shop via oidc-client-ts), /me onboarding, Idempotency-Key checkout, backoff saga polling, 202 async cancellation gate, admin stock/dispatch/deliver.',
+      'Public catalog, Keycloak PKCE (shop via oidc-client-ts), /me onboarding, Idempotency-Key checkout, backoff saga polling, 202 async cancellation gate, admin stock/dispatch/deliver, Playwright E2E.',
   },
   {
-    sprint: 's07 Payments',
-    domain: 'Authorize / capture / refund + double-entry ledger',
-    uiModule: 'features/payments (extension slot)',
+    sprint: 's07 Documentation',
+    domain: 'Role-based Antora docs, domain model, failure stories & drills',
+    uiModule: 'ff-ecommerce-docs (developer/ui-integration & web-console)',
+    status: 'ACTIVE',
+    notes:
+      'Documented same-origin proxy, shop PKCE contract, asynchronous polling rules, and two-tier Playwright setup.',
+  },
+  {
+    sprint: 's08 Payments (Next in UI)',
+    domain: 'Authorize / capture / void + double-entry ledger (ADR-0009)',
+    uiModule: 'features/payments + CartPage cardToken + OrderDetailPage paymentStatus',
     status: 'PLACED',
     notes:
-      'Plug payment intent step into CartPage, show payment state in OrderDetailPage, and add ledger viewer tab in Admin.',
+      'Add simulated cardToken selector (tok_ok, tok_decline, tok_slow, tok_capture_fails) to CartPage and surface paymentStatus (AUTHORIZING, AUTHORIZED, CAPTURED, VOIDED, OVERDUE) on orders.',
   },
   {
-    sprint: 's08 Returns',
+    sprint: 's09 Returns',
     domain: 'Concurrency-safe return limits + payment refunds',
     uiModule: 'features/returns (extension slot)',
     status: 'PLACED',
@@ -28,7 +36,7 @@ const SPRINT_MODULES = [
       'Add "Request return" action on DELIVERED orders with per-line remaining quantity limits and admin approval view.',
   },
   {
-    sprint: 's09 Observability',
+    sprint: 's10 Observability',
     domain: 'Metrics, distributed tracing, dashboards',
     uiModule: 'ProtocolInspector + traceparent propagation',
     status: 'PLACED',
@@ -36,7 +44,7 @@ const SPRINT_MODULES = [
       'Propagate W3C traceparent headers from httpClient and link traces to Grafana/Tempo.',
   },
   {
-    sprint: 's10 Packaging',
+    sprint: 's11 Packaging',
     domain: 'Containers, Compose full stack, K8s',
     uiModule: 'Dockerfile (Nginx same-origin /api proxy)',
     status: 'PLACED',

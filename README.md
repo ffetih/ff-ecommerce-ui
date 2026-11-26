@@ -1,6 +1,6 @@
 # FF E-Commerce UI (`ff-ecommerce-ui`)
 
-A React + TypeScript storefront and back-office application for [ff-ecommerce](https://github.com/ffetih/ff-ecommerce), aligned with backend sprints **s00–s06** and structured so upcoming sprints (**s07 Payments**, **s08 Returns**, **s09 Observability**, **s10 Packaging**) plug in as independent feature slices.
+A React + TypeScript storefront and back-office application for [ff-ecommerce](https://github.com/ffetih/ff-ecommerce) (documented at [ff-ecommerce-docs](https://ffetih.github.io/ff-ecommerce-docs/ff-ecommerce/developer/web-console.html)), currently implementing **s00–s06** and structured so **s08 Payments**, **s09 Returns**, **s10 Observability**, and **s11 Packaging** plug in as independent feature slices.
 
 ## What is covered today (s00–s06)
 
@@ -79,6 +79,6 @@ src/
     customer/         # /me onboarding & Admin directory
     orders/           # SagaTimeline + order list/detail + backoff polling + 202 async cancel
     shipping/         # Admin saga operations (orders + shipments + reservations)
-    # s07: payments/  # Checkout payment step + order payment ledger view
-    # s08: returns/   # Return request on DELIVERED orders + admin approval
+    # s08: payments/  # Checkout cardToken selector + order paymentStatus view
+    # s09: returns/   # Return request on DELIVERED orders + admin approval
 ```
