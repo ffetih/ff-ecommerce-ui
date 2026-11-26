@@ -41,6 +41,11 @@ test.describe('Cart and idempotent checkout protocol', () => {
     await page.getByRole('button', { name: 'Increase quantity for KB-EUR' }).click();
     const keyAfterQty = await keyCode.textContent();
     expect(keyAfterQty).not.toBe(keyAfterRemove);
+
+    // Changing cardToken also rotates Idempotency-Key so a different payment method cannot trigger 409
+    await page.getByLabel(/Payment method/i).selectOption('tok_decline');
+    const keyAfterCard = await keyCode.textContent();
+    expect(keyAfterCard).not.toBe(keyAfterQty);
   });
 
   test('reuses exact Idempotency-Key on 503 Retry-After and surfaces 200 Idempotent-Replayed', async ({
@@ -56,12 +61,14 @@ test.describe('Cart and idempotent checkout protocol', () => {
     });
 
     const receivedKeys: (string | undefined)[] = [];
+    const receivedCardTokens: (string | undefined)[] = [];
     let attempt = 0;
     const orderId = '22222222-2222-4222-8222-222222222222';
     const orderPayload = {
       id: orderId,
       customerId: PERSONAS.alice.sub,
       status: 'PLACED',
+      paymentStatus: 'NOT_REQUESTED',
       totalAmount: 80.0,
       currency: 'EUR',
       shippingAddress: 'Bağdat Cd. 1, İstanbul',
@@ -77,6 +84,8 @@ test.describe('Cart and idempotent checkout protocol', () => {
       }
       attempt += 1;
       receivedKeys.push(route.request().headers()['idempotency-key']);
+      const payload = route.request().postDataJSON() as { cardToken?: string };
+      receivedCardTokens.push(payload.cardToken);
 
       if (attempt === 1) {
         await route.fulfill({
@@ -137,10 +146,11 @@ test.describe('Cart and idempotent checkout protocol', () => {
     await page.getByRole('button', { name: 'Replay same key' }).click();
     await expect(page.getByText('Idempotent replay (200 — Idempotent-Replayed: true)')).toBeVisible();
 
-    // Every attempt carried the exact same non-empty UUID key
+    // Every attempt carried the exact same non-empty UUID key and required s08 cardToken
     expect(receivedKeys).toHaveLength(3);
     expect(receivedKeys[0]).toBeTruthy();
     expect(receivedKeys[1]).toBe(receivedKeys[0]);
     expect(receivedKeys[2]).toBe(receivedKeys[0]);
+    expect(receivedCardTokens).toEqual(['tok_ok', 'tok_ok', 'tok_ok']);
   });
 });

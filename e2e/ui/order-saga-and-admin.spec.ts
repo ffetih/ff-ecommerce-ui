@@ -9,6 +9,7 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
 
     const orderId = '33333333-3333-4333-8333-333333333333';
     let currentStatus: 'PLACED' | 'CONFIRMED' | 'CANCELLATION_REQUESTED' | 'CANCELLED' = 'PLACED';
+    let currentPaymentStatus: 'NOT_REQUESTED' | 'AUTHORIZING' | 'AUTHORIZED' | 'VOIDING' | 'VOIDED' = 'AUTHORIZING';
     let cancellationReason: string | null = null;
     let getCount = 0;
 
@@ -16,8 +17,10 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
       getCount += 1;
       if (currentStatus === 'PLACED' && getCount >= 2) {
         currentStatus = 'CONFIRMED';
+        currentPaymentStatus = 'AUTHORIZED';
       } else if (currentStatus === 'CANCELLATION_REQUESTED' && getCount >= 4) {
         currentStatus = 'CANCELLED';
+        currentPaymentStatus = 'VOIDED';
       }
 
       await route.fulfill({
@@ -27,6 +30,7 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
           id: orderId,
           customerId: PERSONAS.alice.sub,
           status: currentStatus,
+          paymentStatus: currentPaymentStatus,
           totalAmount: 89.9,
           currency: 'EUR',
           shippingAddress: 'Bağdat Cd. 1, İstanbul',
@@ -49,6 +53,7 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
           id: orderId,
           customerId: PERSONAS.alice.sub,
           status: currentStatus,
+          paymentStatus: currentPaymentStatus,
           totalAmount: 89.9,
           currency: 'EUR',
           shippingAddress: 'Bağdat Cd. 1, İstanbul',
@@ -62,8 +67,9 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
     await page.goto(`/orders/${orderId}`);
     await page.getByRole('button', { name: 'Sign in with Keycloak' }).click();
 
-    // Auto-polling advances from PLACED to CONFIRMED
+    // Auto-polling advances from PLACED (AUTHORIZING) to CONFIRMED (AUTHORIZED)
     await expect(page.getByRole('button', { name: 'Request cancellation' })).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.page-header').getByText('AUTHORIZED', { exact: true })).toBeVisible();
 
     // Native <dialog> opens and closes cleanly on Escape
     await page.getByRole('button', { name: 'Request cancellation' }).click();
@@ -72,13 +78,94 @@ test.describe('Order saga lifecycle, async cancel, and role boundaries', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
 
-    // Reopen and submit cancellation -> 202 Accepted -> auto-polls to CANCELLED
+    // Reopen and submit cancellation -> 202 Accepted -> auto-polls to CANCELLED + VOIDED
     await page.getByRole('button', { name: 'Request cancellation' }).click();
     await dialog.getByLabel('Cancellation reason').fill('Ordered wrong switch type');
     await dialog.getByRole('button', { name: 'Confirm cancellation' }).click();
 
     await expect(page.getByText(/Ordered wrong switch type/)).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.page-header').getByText('CANCELLED')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.page-header').getByText('VOIDED')).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('shows Waiting for payment during slow authorization and alerts on OVERDUE capture failure', async ({
+    page,
+  }) => {
+    await installMockOidc(page, 'alice');
+
+    const slowOrderId = '44444444-4444-4444-8444-444444444444';
+    await page.route(`**/api/v1/orders/${slowOrderId}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slowOrderId,
+          customerId: PERSONAS.alice.sub,
+          status: 'PLACED',
+          paymentStatus: 'AUTHORIZING',
+          totalAmount: 49.9,
+          currency: 'EUR',
+          shippingAddress: 'Bağdat Cd. 1, İstanbul',
+          cancellationReason: null,
+          lines: [{ sku: 'KB-MECH-01', quantity: 1, unitPrice: 49.9, lineTotal: 49.9 }],
+          createdAt: '2026-11-26T08:00:00Z',
+        }),
+      });
+    });
+
+    const overdueOrderId = '55555555-5555-4555-8555-555555555555';
+    await page.route(`**/api/v1/orders/${overdueOrderId}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: overdueOrderId,
+          customerId: PERSONAS.alice.sub,
+          status: 'SHIPPED',
+          paymentStatus: 'OVERDUE',
+          totalAmount: 49.9,
+          currency: 'EUR',
+          shippingAddress: 'Bağdat Cd. 1, İstanbul',
+          cancellationReason: null,
+          lines: [{ sku: 'KB-MECH-01', quantity: 1, unitPrice: 49.9, lineTotal: 49.9 }],
+          createdAt: '2026-11-26T08:00:00Z',
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/orders', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: overdueOrderId,
+            customerId: PERSONAS.alice.sub,
+            status: 'SHIPPED',
+            paymentStatus: 'OVERDUE',
+            totalAmount: 49.9,
+            currency: 'EUR',
+            shippingAddress: 'Bağdat Cd. 1, İstanbul',
+            cancellationReason: null,
+            lines: [{ sku: 'KB-MECH-01', quantity: 1, unitPrice: 49.9, lineTotal: 49.9 }],
+            createdAt: '2026-11-26T08:00:00Z',
+          },
+        ]),
+      });
+    });
+
+    await page.goto(`/orders/${slowOrderId}`);
+    await page.getByRole('button', { name: 'Sign in with Keycloak' }).click();
+
+    await expect(page.getByText('Waiting for payment', { exact: true }).first()).toBeVisible();
+    await expect(page.locator('.page-header').getByText('AUTHORIZING', { exact: true })).toBeVisible();
+
+    // Navigate via SPA to My Orders -> overdue order detail
+    await page.getByRole('link', { name: 'My Orders', exact: true }).click();
+    await expect(page.getByText('OVERDUE', { exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Details', exact: true }).click();
+
+    await expect(page.getByText(/Payment overdue — back-office follow-up required/i)).toBeVisible();
   });
 
   test('enforces customer vs admin role boundary and renders single-row admin navigation', async ({ page }) => {

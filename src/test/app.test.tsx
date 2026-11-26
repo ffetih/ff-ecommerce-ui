@@ -8,6 +8,7 @@ import { decodeJwtPayload, extractAudiences, extractRoles } from '../shared/util
 import { apiRequest, clearHttpTraces, configureHttpClient, subscribeHttpTraces } from '../shared/api/httpClient';
 import { ApiError, type HttpTraceEntry } from '../shared/api/types';
 import { CartProvider, useCart } from '../features/cart/cartContext';
+import { isOrderInFlight } from '../features/orders/api';
 import { SagaTimeline } from '../features/orders/SagaTimeline';
 import { CatalogPage } from '../features/catalog/CatalogPage';
 import {
@@ -206,10 +207,11 @@ describe('CartProvider idempotency key lifecycle', () => {
   });
 
   function CartProbe() {
-    const { idempotencyKey, addItem, setQuantity, totalCount } = useCart();
+    const { idempotencyKey, cardToken, addItem, setQuantity, setCardToken, totalCount } = useCart();
     return (
       <div>
         <span data-testid="key">{idempotencyKey}</span>
+        <span data-testid="card">{cardToken}</span>
         <span data-testid="count">{totalCount}</span>
         <button
           type="button"
@@ -222,11 +224,14 @@ describe('CartProvider idempotency key lifecycle', () => {
         <button type="button" onClick={() => setQuantity('KB-01', 3)}>
           Set 3
         </button>
+        <button type="button" onClick={() => setCardToken('tok_decline')}>
+          Use Declined Card
+        </button>
       </div>
     );
   }
 
-  it('rotates Idempotency-Key whenever cart contents change', async () => {
+  it('rotates Idempotency-Key whenever cart contents or cardToken change', async () => {
     const user = userEvent.setup();
     render(
       <CartProvider>
@@ -234,6 +239,7 @@ describe('CartProvider idempotency key lifecycle', () => {
       </CartProvider>,
     );
 
+    expect(screen.getByTestId('card')).toHaveTextContent('tok_ok');
     const initialKey = screen.getByTestId('key').textContent;
     await user.click(screen.getByRole('button', { name: 'Add KB' }));
     const afterAddKey = screen.getByTestId('key').textContent;
@@ -244,19 +250,42 @@ describe('CartProvider idempotency key lifecycle', () => {
     const afterQtyKey = screen.getByTestId('key').textContent;
     expect(afterQtyKey).not.toBe(afterAddKey);
     expect(screen.getByTestId('count')).toHaveTextContent('3');
+
+    await user.click(screen.getByRole('button', { name: 'Use Declined Card' }));
+    const afterCardKey = screen.getByTestId('key').textContent;
+    expect(afterCardKey).not.toBe(afterQtyKey);
+    expect(screen.getByTestId('card')).toHaveTextContent('tok_decline');
   });
 });
 
-describe('SagaTimeline', () => {
+describe('SagaTimeline and s08 payment tracking', () => {
   it('renders the s06 CANCELLATION_REQUESTED waiting gate', () => {
-    render(<SagaTimeline status="CANCELLATION_REQUESTED" cancellationReason="changed my mind" />);
+    render(
+      <SagaTimeline
+        status="CANCELLATION_REQUESTED"
+        paymentStatus="AUTHORIZED"
+        cancellationReason="changed my mind"
+      />,
+    );
     expect(screen.getByText('3. Cancellation Requested')).toBeInTheDocument();
     expect(screen.getByText(/202 Accepted/i)).toBeInTheDocument();
   });
 
-  it('renders the cancellation reason when CANCELLED', () => {
-    render(<SagaTimeline status="CANCELLED" cancellationReason="Stock unavailable: KB-01" />);
-    expect(screen.getByText(/Stock unavailable: KB-01/)).toBeInTheDocument();
+  it('renders payment decline and overdue states and detects in-flight payments', () => {
+    render(
+      <SagaTimeline
+        status="CANCELLED"
+        paymentStatus="DECLINED"
+        cancellationReason="Payment declined: Card declined"
+      />,
+    );
+    expect(screen.getByText(/Payment declined: Card declined/)).toBeInTheDocument();
+    expect(screen.getByText(/Card declined — nothing charged/)).toBeInTheDocument();
+
+    expect(isOrderInFlight('SHIPPED', 'CAPTURING')).toBe(true);
+    expect(isOrderInFlight('CANCELLED', 'VOIDING')).toBe(true);
+    expect(isOrderInFlight('SHIPPED', 'CAPTURED')).toBe(false);
+    expect(isOrderInFlight('SHIPPED', 'OVERDUE')).toBe(false);
   });
 });
 

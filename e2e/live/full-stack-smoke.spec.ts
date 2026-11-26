@@ -71,9 +71,12 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await expect(page).toHaveURL(/\/orders\/[0-9a-f-]+$/);
     const orderId = new URL(page.url()).pathname.split('/').pop()!;
 
-    // Wait for async Kafka reservation -> CONFIRMED
+    // Wait for async Kafka reservation + payment authorization -> CONFIRMED + AUTHORIZED
     await expect(page.locator('.page-header').getByText('CONFIRMED', { exact: true })).toBeVisible({
       timeout: 20_000,
+    });
+    await expect(page.locator('.page-header').getByText('AUTHORIZED', { exact: true })).toBeVisible({
+      timeout: 10_000,
     });
 
     // Switch to admin to dispatch and deliver the shipment
@@ -97,10 +100,15 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await expect(page.locator('.page-header').getByText('DELIVERED', { exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.locator('.page-header').getByText('CAPTURED', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     await signOutFromHeader(page);
   });
 
-  test('3. s06 async cancellation (202 -> CANCELLED) and Bob ownership isolation (404)', async ({ page }) => {
+  test('3. s06/s08 async cancellation (202 -> CANCELLED + VOIDED) and Bob ownership isolation (404)', async ({
+    page,
+  }) => {
     await page.goto('/');
     await signInAs(page, 'alice');
 
@@ -117,7 +125,7 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     });
     cancelledOrderPath = new URL(page.url()).pathname;
 
-    // Request async cancellation (202 Accepted -> CANCELLATION_REQUESTED -> CANCELLED)
+    // Request async cancellation (202 Accepted -> CANCELLATION_REQUESTED -> CANCELLED + VOIDED)
     await page.getByRole('button', { name: 'Request cancellation', exact: true }).click();
     const dialog = page.locator('dialog[open]');
     await dialog.getByLabel('Cancellation reason', { exact: true }).fill('Playwright live smoke cancellation');
@@ -126,12 +134,39 @@ test.describe.serial('Live full-stack smoke (Keycloak PKCE + Gateway + Order Sag
     await expect(page.locator('.page-header').getByText('CANCELLED', { exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.locator('.page-header').getByText('VOIDED', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText(/Playwright live smoke cancellation/)).toBeVisible();
 
     // Switch directly to Bob while on Alice's order URL (returnTo brings Bob straight back here -> 404)
     await signInAs(page, 'bob');
     await expect(page).toHaveURL(new RegExp(`${cancelledOrderPath}$`));
     await expect(page.getByText(/404|not found/i).first()).toBeVisible({ timeout: 10_000 });
+    await signOutFromHeader(page);
+  });
+
+  test('4. s08 declined card (tok_decline) cancels order and releases stock', async ({ page }) => {
+    await page.goto('/');
+    await signInAs(page, 'alice');
+
+    const productCard = page.locator('article', { hasText: productName });
+    await expect(productCard).toBeVisible({ timeout: 10_000 });
+    await productCard.getByRole('button', { name: /add to cart/i }).click();
+    await page.getByRole('link', { name: /Cart \(1\)/i }).click();
+
+    await page.getByLabel(/Payment method/i).selectOption('tok_decline');
+    await page.getByRole('button', { name: 'Place order', exact: true }).click();
+    await expect(page.getByText('Order created (201 Created)')).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'Track order saga', exact: true }).click();
+    await expect(page.locator('.page-header').getByText('CANCELLED', { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('.page-header').getByText('DECLINED', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText(/Payment declined/i)).toBeVisible();
     await signOutFromHeader(page);
   });
 });

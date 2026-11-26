@@ -1,14 +1,14 @@
 # FF E-Commerce UI (`ff-ecommerce-ui`)
 
-A React + TypeScript storefront and back-office application for [ff-ecommerce](https://github.com/ffetih/ff-ecommerce) (documented at [ff-ecommerce-docs](https://ffetih.github.io/ff-ecommerce-docs/ff-ecommerce/developer/web-console.html)), currently implementing **s00–s06** and structured so **s08 Payments**, **s09 Returns**, **s10 Observability**, and **s11 Packaging** plug in as independent feature slices.
+A React + TypeScript storefront and back-office application for [ff-ecommerce](https://github.com/ffetih/ff-ecommerce) (documented at [ff-ecommerce-docs](https://ffetih.github.io/ff-ecommerce-docs/ff-ecommerce/developer/web-console.html)), currently implementing **s00–s08** and structured so **s09 Returns**, **s10 Observability**, and **s11 Packaging** plug in as independent feature slices.
 
-## What is covered today (s00–s06)
+## What is covered today (s00–s08)
 
 - **Public Storefront (`/`):** Browse products (`GET /api/v1/products`) without sending any token when logged out, filter by name/SKU, see off-sale badges (`active: false`), add to cart.
 - **Authorization Code + PKCE (`shop` client via `oidc-client-ts`):** No password form in the console; clicking **Sign in** redirects to Keycloak (`http://localhost:8180/realms/ecommerce`) with S256 PKCE, completes at `/callback`, keeps tokens strictly in memory (`InMemoryWebStorage`), refreshes expiring tokens proactively before API calls, and never sends an expired token.
-- **Idempotent Checkout (`/cart`):** Multi-line order placement (`POST /api/v1/orders`) with a visible per-attempt `Idempotency-Key` UUID, automatic key rotation when cart contents change, mixed-currency guard, safe retry with the same key on `503 Retry-After`, and explicit `200 Idempotent-Replayed: true` feedback.
+- **Idempotent Checkout & Payments (`/cart`):** Multi-line order placement (`POST /api/v1/orders`) with a simulated payment `cardToken` selector (`tok_ok`, `tok_decline`, `tok_slow`, `tok_capture_fails`), visible per-attempt `Idempotency-Key` UUID, automatic key rotation whenever cart lines or `cardToken` change, mixed-currency guard, safe retry with the same key on `503 Retry-After`, and explicit `200 Idempotent-Replayed: true` feedback.
 - **Customer Onboarding & Profile (`/profile`):** Calls `GET /api/v1/customers/me`; on `404`, guides first-time users through `POST /api/v1/customers/me` (customer id `sub` and `email` come from the Keycloak token). Supports updating the shipping address (`PUT /me/shipping-address`) and displays deactivated account restrictions (`409`).
-- **Live Order Saga Tracking & Async Cancellation (`/orders`, `/orders/:id`):** Visualizes `PLACED → CONFIRMED → SHIPPED → DELIVERED` and `CANCELLATION_REQUESTED → CANCELLED`, polling transitional states with backoff (`500 ms` → `3 s`) and pausing cleanly with a "Still processing" notice on timeout. Surfaces the s06 `200` (placed) vs `202 Accepted` (confirmed — waiting on `shipping-service`) cancellation gate.
+- **Live Order Saga & Payment Tracking (`/orders`, `/orders/:id`):** Visualizes `PLACED → CONFIRMED → SHIPPED → DELIVERED` and `CANCELLATION_REQUESTED → CANCELLED` alongside `paymentStatus` (`AUTHORIZING`, `AUTHORIZED`, `CAPTURED`, `VOIDED`, `DECLINED`, `OVERDUE`), polling transitional order and payment states with backoff (`500 ms` → `3 s`), showing a "Waiting for payment" banner for slow authorizations, pausing cleanly with "Still processing" on timeout, and surfacing the `200` vs `202 Accepted` cancellation gate.
 - **Back-Office Console (`/admin/*`, `ROLE_admin`):**
   - **Catalog & Stock (`/admin/catalog`):** Create products, update prices, take products off sale (`POST .../deactivate`), inspect `onHand / reserved / available`, book idempotent goods receipts (`referenceId` UUID).
   - **Operations (`/admin/operations`):** Inspect customer orders, shipments (`GET /api/v1/shipments?orderId=...`), and catalog reservations (`GET /api/v1/reservations/{orderId}`) side-by-side; trigger **Dispatch** and **Deliver**.
@@ -78,7 +78,7 @@ src/
     cart/             # Client-side cart + per-attempt Idempotency-Key
     customer/         # /me onboarding & Admin directory
     orders/           # SagaTimeline + order list/detail + backoff polling + 202 async cancel
+    payments/         # s08 paymentStatus labels & simulated cardToken catalog (ADR-0009)
     shipping/         # Admin saga operations (orders + shipments + reservations)
-    # s08: payments/  # Checkout cardToken selector + order paymentStatus view
     # s09: returns/   # Return request on DELIVERED orders + admin approval
 ```

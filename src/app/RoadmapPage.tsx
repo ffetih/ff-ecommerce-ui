@@ -20,12 +20,12 @@ const SPRINT_MODULES = [
       'Documented same-origin proxy, shop PKCE contract, asynchronous polling rules, and two-tier Playwright setup.',
   },
   {
-    sprint: 's08 Payments (Next in UI)',
+    sprint: 's08 Payments (Live in UI)',
     domain: 'Authorize / capture / void + double-entry ledger (ADR-0009)',
     uiModule: 'features/payments + CartPage cardToken + OrderDetailPage paymentStatus',
-    status: 'PLACED',
+    status: 'ACTIVE',
     notes:
-      'Add simulated cardToken selector (tok_ok, tok_decline, tok_slow, tok_capture_fails) to CartPage and surface paymentStatus (AUTHORIZING, AUTHORIZED, CAPTURED, VOIDED, OVERDUE) on orders.',
+      'Simulated cardToken selector (tok_ok, tok_decline, tok_slow, tok_capture_fails) rotating Idempotency-Key on change; live paymentStatus badges, "Waiting for payment" slow-provider notice, and OVERDUE back-office alert.',
   },
   {
     sprint: 's09 Returns',

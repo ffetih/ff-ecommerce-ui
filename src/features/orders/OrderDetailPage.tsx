@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Ban, RefreshCw } from 'lucide-react';
 import { cancelOrder, getOrder, isOrderInFlight } from './api';
 import { SagaTimeline } from './SagaTimeline';
+import { customerPaymentLabel, paymentStatusDescription } from '../payments/model';
 import { useAuth } from '../auth/authContext';
 import { ModalDialog } from '../../shared/ui/ModalDialog';
 import { ProblemBanner } from '../../shared/ui/ProblemBanner';
@@ -54,14 +55,15 @@ export function OrderDetailPage() {
     queryFn: () => getOrder(orderId),
     enabled: isAuthenticated && orderId.length > 0,
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (!status || !isOrderInFlight(status)) {
+      const data = query.state.data;
+      if (!data || !isOrderInFlight(data.status, data.paymentStatus)) {
         pollStartRef.current = null;
         pollAttemptRef.current = 0;
         return false;
       }
-      if (trackedStatusRef.current !== status) {
-        trackedStatusRef.current = status;
+      const stateKey = `${data.status}:${data.paymentStatus ?? ''}`;
+      if (trackedStatusRef.current !== stateKey) {
+        trackedStatusRef.current = stateKey;
         pollStartRef.current = Date.now();
         pollAttemptRef.current = 0;
       }
@@ -76,8 +78,9 @@ export function OrderDetailPage() {
   });
 
   const currentStatus = orderQuery.data?.status;
+  const currentPaymentStatus = orderQuery.data?.paymentStatus;
   useEffect(() => {
-    if (!currentStatus || !isOrderInFlight(currentStatus)) {
+    if (!currentStatus || !isOrderInFlight(currentStatus, currentPaymentStatus)) {
       setPollTimedOut(false);
       return;
     }
@@ -88,7 +91,7 @@ export function OrderDetailPage() {
       setPollTimedOut(true);
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [currentStatus, orderQuery.dataUpdatedAt]);
+  }, [currentStatus, currentPaymentStatus, orderQuery.dataUpdatedAt]);
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelOrder(orderId, reason.trim()),
@@ -137,7 +140,7 @@ export function OrderDetailPage() {
   }
 
   const order = orderQuery.data;
-  const inFlight = Boolean(order && isOrderInFlight(order.status));
+  const inFlight = Boolean(order && isOrderInFlight(order.status, order.paymentStatus));
   const canCancel = order && (order.status === 'PLACED' || order.status === 'CONFIRMED');
   const backPath = hasRole('admin') ? '/admin/operations' : '/orders';
 
@@ -152,6 +155,7 @@ export function OrderDetailPage() {
           <div className="row">
             <h1>Order Details</h1>
             {order ? <StatusBadge status={order.status} /> : null}
+            {order?.paymentStatus ? <StatusBadge status={order.paymentStatus} /> : null}
             {inFlight && !pollTimedOut ? (
               <span className="badge badge-info">Auto-polling saga…</span>
             ) : null}
@@ -184,12 +188,41 @@ export function OrderDetailPage() {
         <ProblemBanner error={orderQuery.error} onRetry={() => void orderQuery.refetch()} />
       ) : null}
 
+      {order?.status === 'PLACED' && order.paymentStatus === 'AUTHORIZING' ? (
+        <div className="banner banner-info" role="status">
+          <strong>Waiting for payment</strong>
+          <div className="banner-body">
+            Stock is reserved and <code>payment-service</code> is authorizing the card. If the
+            provider answered slowly, the resolver retries with the same idempotency key rather than
+            declining prematurely (ADR-0009).
+          </div>
+        </div>
+      ) : null}
+
+      {order?.paymentStatus === 'OVERDUE' ? (
+        <div className="banner banner-danger" role="alert">
+          <strong>Payment overdue — back-office follow-up required</strong>
+          <div className="banner-body">
+            The parcel was already dispatched (point of no return), so the order stays{' '}
+            <code>{order.status}</code>, while capturing the authorized funds failed. Operations
+            collects payment separately (ADR-0009).
+          </div>
+        </div>
+      ) : null}
+
       {inFlight && pollTimedOut ? (
         <div className="banner banner-info" role="status">
           <strong>Still processing</strong>
           <div className="banner-body">
-            The order is still in <code>{order?.status}</code> while asynchronous saga events finish.
-            Automatic polling paused after 30 seconds — click <strong>Refresh</strong> to check again.
+            The order is still in <code>{order?.status}</code>
+            {order?.paymentStatus ? (
+              <>
+                {' '}
+                (payment: <code>{order.paymentStatus}</code>)
+              </>
+            ) : null}{' '}
+            while asynchronous saga events finish. Automatic polling paused after 30 seconds — click{' '}
+            <strong>Refresh</strong> to check again.
           </div>
         </div>
       ) : null}
@@ -200,7 +233,7 @@ export function OrderDetailPage() {
           <div className="banner-body">
             Because this order was already <code>CONFIRMED</code>, only <code>shipping-service</code>{' '}
             knows whether the parcel has left the warehouse. This page polls automatically until the
-            order becomes <code>CANCELLED</code> or <code>SHIPPED</code>.
+            order becomes <code>CANCELLED</code> (voiding the payment hold) or <code>SHIPPED</code>.
           </div>
         </div>
       ) : null}
@@ -209,7 +242,11 @@ export function OrderDetailPage() {
         <>
           <div className="card stack-md">
             <h2 className="card-title">Order Saga Lifecycle</h2>
-            <SagaTimeline status={order.status} cancellationReason={order.cancellationReason} />
+            <SagaTimeline
+              status={order.status}
+              paymentStatus={order.paymentStatus}
+              cancellationReason={order.cancellationReason}
+            />
           </div>
 
           <div className="kpi-grid">
@@ -218,12 +255,23 @@ export function OrderDetailPage() {
               <div className="kpi-value">{formatMoney(order.totalAmount, order.currency)}</div>
             </div>
             <div className="kpi-box">
-              <div className="kpi-label">Customer ID</div>
-              <code style={{ fontSize: '0.78rem', wordBreak: 'break-all' }}>{order.customerId}</code>
+              <div className="kpi-label">Payment</div>
+              <div className="row" style={{ marginTop: '0.25rem', gap: '0.4rem' }}>
+                {order.paymentStatus ? <StatusBadge status={order.paymentStatus} /> : null}
+                <strong style={{ fontSize: '0.9rem' }}>
+                  {customerPaymentLabel(order.paymentStatus)}
+                </strong>
+              </div>
+              <div className="hint" style={{ marginTop: '0.25rem', fontSize: '0.78rem' }}>
+                {paymentStatusDescription(order.paymentStatus)}
+              </div>
             </div>
             <div className="kpi-box">
               <div className="kpi-label">Placed At</div>
               <div style={{ fontWeight: 600, marginTop: '0.2rem' }}>{formatDateTime(order.createdAt)}</div>
+              <code className="muted" style={{ fontSize: '0.74rem', wordBreak: 'break-all' }}>
+                {order.customerId}
+              </code>
             </div>
             <div className="kpi-box">
               <div className="kpi-label">Shipping Address</div>

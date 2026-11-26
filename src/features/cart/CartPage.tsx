@@ -1,9 +1,10 @@
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Minus, Plus, RotateCw, ShoppingBag, Trash2 } from 'lucide-react';
+import { CreditCard, KeyRound, Minus, Plus, RotateCw, ShoppingBag, Trash2 } from 'lucide-react';
 import { useCart } from './cartContext';
 import { placeOrder, type Order } from '../orders/api';
+import { SIMULATED_CARD_TOKENS } from '../payments/model';
 import { useAuth } from '../auth/authContext';
 import { ProblemBanner } from '../../shared/ui/ProblemBanner';
 import { ResponsiveTable } from '../../shared/ui/ResponsiveTable';
@@ -13,7 +14,8 @@ import { formatMoney } from '../../shared/utils/format';
 import { ApiError } from '../../shared/api/types';
 
 export function CartPage() {
-  const { items, idempotencyKey, setQuantity, removeItem, clearCart, rotateIdempotencyKey } = useCart();
+  const { items, idempotencyKey, cardToken, setQuantity, removeItem, setCardToken, clearCart, rotateIdempotencyKey } =
+    useCart();
   const { isAuthenticated, hasRole, login } = useAuth();
   const { notify } = useToast();
   const queryClient = useQueryClient();
@@ -24,9 +26,13 @@ export function CartPage() {
 
   const formRef = useRef<HTMLFormElement>(null);
   useAccessibleValidation(formRef);
+  const cardId = useId();
+  const cardHintId = useId();
   const addressId = useId();
   const addressHintId = useId();
   const addressErrId = useId();
+
+  const selectedCard = SIMULATED_CARD_TOKENS.find((c) => c.token === cardToken) ?? SIMULATED_CARD_TOKENS[0];
 
   const currencies = useMemo(() => new Set(items.map((item) => item.currency)), [items]);
   const hasMixedCurrencies = currencies.size > 1;
@@ -41,6 +47,7 @@ export function CartPage() {
       placeOrder(
         {
           lines: items.map((item) => ({ sku: item.sku, quantity: item.quantity })),
+          cardToken,
           shippingAddress: shippingAddress.trim() || undefined,
         },
         key,
@@ -253,6 +260,40 @@ export function CartPage() {
             ) : null}
 
             <form ref={formRef} onSubmit={handleSubmit} className="stack-md" noValidate>
+              <div className="field">
+                <label htmlFor={cardId}>
+                  <span className="row" style={{ gap: '0.35rem' }}>
+                    <CreditCard size={14} aria-hidden="true" />
+                    Payment method (card token)
+                  </span>
+                </label>
+                <span id={cardHintId} className="hint">
+                  Simulated provider token (ADR-0009); changing the card rotates the{' '}
+                  <code>Idempotency-Key</code> automatically. Raw card numbers never reach the backend.
+                </span>
+                <select
+                  id={cardId}
+                  className="select"
+                  value={cardToken}
+                  aria-describedby={cardHintId}
+                  onChange={(e) => {
+                    setCardToken(e.target.value);
+                    setLastPlaced(null);
+                  }}
+                >
+                  {SIMULATED_CARD_TOKENS.map((option) => (
+                    <option key={option.token} value={option.token}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedCard ? (
+                  <span className="hint" style={{ fontSize: '0.8rem' }}>
+                    Expected outcome: {selectedCard.outcome}
+                  </span>
+                ) : null}
+              </div>
+
               <div className="field">
                 <label htmlFor={addressId}>Shipping address override (optional)</label>
                 <span id={addressHintId} className="hint">

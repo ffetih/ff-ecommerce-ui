@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Product } from '../catalog/api';
+import { DEFAULT_CARD_TOKEN } from '../payments/model';
 import { newUuid } from '../../shared/utils/format';
 
 const CART_STORAGE_KEY = 'ff_ecommerce_cart_v1';
@@ -15,15 +16,18 @@ export interface CartItem {
 interface PersistedCart {
   items: CartItem[];
   idempotencyKey: string;
+  cardToken: string;
 }
 
 interface CartContextValue {
   items: CartItem[];
   totalCount: number;
   idempotencyKey: string;
+  cardToken: string;
   addItem: (product: Product, quantity?: number) => void;
   setQuantity: (sku: string, quantity: number) => void;
   removeItem: (sku: string) => void;
+  setCardToken: (token: string) => void;
   clearCart: () => void;
   rotateIdempotencyKey: () => string;
 }
@@ -39,35 +43,40 @@ function loadInitialCart(): PersistedCart {
         return {
           items: parsed.items,
           idempotencyKey: parsed.idempotencyKey,
+          cardToken:
+            typeof parsed.cardToken === 'string' && parsed.cardToken.trim()
+              ? parsed.cardToken
+              : DEFAULT_CARD_TOKEN,
         };
       }
     }
   } catch {
     // Ignore storage read failures in restricted environments
   }
-  return { items: [], idempotencyKey: newUuid() };
+  return { items: [], idempotencyKey: newUuid(), cardToken: DEFAULT_CARD_TOKEN };
 }
 
 /**
  * Client-side cart paired with an explicit Idempotency-Key per checkout attempt:
- * - Persisted in sessionStorage (items + key only, never tokens) so guest carts survive the
- *   Keycloak Authorization Code + PKCE redirect.
+ * - Persisted in sessionStorage (items, cardToken, key only — never auth tokens) so guest carts
+ *   survive the Keycloak Authorization Code + PKCE redirect.
  * - Retrying after a 503 or timeout reuses the same key (safe idempotent replay).
- * - Modifying cart items automatically rotates the key so the backend does not reject with 409
- *   (IdempotencyKeyReusedException).
+ * - Modifying cart items or cardToken automatically rotates the key so the backend does not reject
+ *   with 409 (IdempotencyKeyReusedException).
  */
 export function CartProvider({ children }: { children: ReactNode }) {
   const [initial] = useState<PersistedCart>(() => loadInitialCart());
   const [items, setItems] = useState<CartItem[]>(initial.items);
   const [idempotencyKey, setIdempotencyKey] = useState<string>(initial.idempotencyKey);
+  const [cardToken, setCardTokenState] = useState<string>(initial.cardToken);
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ items, idempotencyKey }));
+      sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ items, idempotencyKey, cardToken }));
     } catch {
       // Ignore storage quota errors
     }
-  }, [items, idempotencyKey]);
+  }, [items, idempotencyKey, cardToken]);
 
   const rotateIdempotencyKey = useCallback(() => {
     const next = newUuid();
@@ -113,8 +122,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setIdempotencyKey(newUuid());
   }, []);
 
+  const setCardToken = useCallback((token: string) => {
+    setCardTokenState(token);
+    setIdempotencyKey(newUuid());
+  }, []);
+
   const clearCart = useCallback(() => {
     setItems([]);
+    setCardTokenState(DEFAULT_CARD_TOKEN);
     setIdempotencyKey(newUuid());
   }, []);
 
@@ -128,13 +143,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items,
       totalCount,
       idempotencyKey,
+      cardToken,
       addItem,
       setQuantity,
       removeItem,
+      setCardToken,
       clearCart,
       rotateIdempotencyKey,
     }),
-    [items, totalCount, idempotencyKey, addItem, setQuantity, removeItem, clearCart, rotateIdempotencyKey],
+    [
+      items,
+      totalCount,
+      idempotencyKey,
+      cardToken,
+      addItem,
+      setQuantity,
+      removeItem,
+      setCardToken,
+      clearCart,
+      rotateIdempotencyKey,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

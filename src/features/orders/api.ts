@@ -1,5 +1,6 @@
 import { apiRequest } from '../../shared/api/httpClient';
 import type { ApiResult } from '../../shared/api/types';
+import { isPaymentInFlight, type PaymentStatus } from '../payments/model';
 
 export type OrderStatus =
   | 'PLACED'
@@ -20,6 +21,7 @@ export interface Order {
   id: string;
   customerId: string;
   status: OrderStatus;
+  paymentStatus?: PaymentStatus;
   lines: OrderLine[];
   totalAmount: number;
   currency: string;
@@ -30,23 +32,31 @@ export interface Order {
 
 export interface PlaceOrderInput {
   lines: Array<{ sku: string; quantity: number }>;
+  cardToken: string;
   shippingAddress?: string;
 }
 
-export function isOrderInFlight(status: OrderStatus): boolean {
-  return status === 'PLACED' || status === 'CANCELLATION_REQUESTED';
+export function isOrderInFlight(status: OrderStatus, paymentStatus?: PaymentStatus): boolean {
+  return (
+    status === 'PLACED' ||
+    status === 'CANCELLATION_REQUESTED' ||
+    isPaymentInFlight(paymentStatus)
+  );
 }
 
 export async function placeOrder(
   input: PlaceOrderInput,
   idempotencyKey: string,
 ): Promise<ApiResult<Order>> {
+  const cardToken = input.cardToken.trim();
+  const body = input.shippingAddress?.trim()
+    ? { cardToken, lines: input.lines, shippingAddress: input.shippingAddress.trim() }
+    : { cardToken, lines: input.lines };
+
   return apiRequest<Order>('/api/v1/orders', {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
-    body: input.shippingAddress?.trim()
-      ? { lines: input.lines, shippingAddress: input.shippingAddress.trim() }
-      : { lines: input.lines },
+    body,
   });
 }
 

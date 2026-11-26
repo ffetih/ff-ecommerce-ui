@@ -17,6 +17,16 @@ const TONE_MAP: Record<string, string> = {
   RESERVED: 'badge-brand',
   COMMITTED: 'badge-success',
   RELEASED: 'badge-warning',
+  // Payment statuses (s08)
+  NOT_REQUESTED: 'badge-neutral',
+  AUTHORIZING: 'badge-info',
+  AUTHORIZED: 'badge-brand',
+  DECLINED: 'badge-danger',
+  VOIDING: 'badge-warning',
+  VOIDED: 'badge-warning',
+  CAPTURING: 'badge-info',
+  CAPTURED: 'badge-success',
+  OVERDUE: 'badge-danger',
   // Active flags / roles
   ACTIVE: 'badge-success',
   INACTIVE: 'badge-danger',

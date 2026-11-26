@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList, RefreshCw } from 'lucide-react';
 import { isOrderInFlight, listOrders } from './api';
+import { customerPaymentLabel } from '../payments/model';
 import { RequireRole } from '../auth/RequireRole';
 import { useAuth } from '../auth/authContext';
 import { ProblemBanner } from '../../shared/ui/ProblemBanner';
@@ -15,14 +16,16 @@ function OrdersContent() {
   const ordersQuery = useQuery({
     queryKey: ['orders', 'mine', session?.subject],
     queryFn: () => listOrders(),
-    // Poll while any order is in a transitional saga state (PLACED / CANCELLATION_REQUESTED)
+    // Poll while any order or payment is in a transitional saga state
     refetchInterval: (query) => {
       const list = query.state.data;
-      return list?.some((order) => isOrderInFlight(order.status)) ? 2000 : false;
+      return list?.some((order) => isOrderInFlight(order.status, order.paymentStatus)) ? 2000 : false;
     },
   });
 
-  const inFlightCount = (ordersQuery.data ?? []).filter((o) => isOrderInFlight(o.status)).length;
+  const inFlightCount = (ordersQuery.data ?? []).filter((o) =>
+    isOrderInFlight(o.status, o.paymentStatus),
+  ).length;
 
   return (
     <div className="stack-lg">
@@ -71,7 +74,7 @@ function OrdersContent() {
       ) : (
         <ResponsiveTable
           caption="Customer orders"
-          headers={['Order ID', 'Status', 'Items', 'Total', 'Placed at', 'Actions']}
+          headers={['Order ID', 'Status', 'Payment', 'Items', 'Total', 'Placed at', 'Actions']}
         >
           {ordersQuery.data.map((order) => (
             <tr key={order.id}>
@@ -82,6 +85,14 @@ function OrdersContent() {
               </th>
               <td data-label="Status">
                 <StatusBadge status={order.status} />
+              </td>
+              <td data-label="Payment">
+                <div className="row" style={{ gap: '0.4rem' }}>
+                  {order.paymentStatus ? <StatusBadge status={order.paymentStatus} /> : null}
+                  <span className="muted" style={{ fontSize: '0.82rem' }}>
+                    {customerPaymentLabel(order.paymentStatus)}
+                  </span>
+                </div>
               </td>
               <td data-label="Items">
                 {order.lines.map((l) => `${l.sku} ×${l.quantity}`).join(', ')}

@@ -33,7 +33,7 @@ function AdminOperationsContent() {
     queryFn: () => listOrders(activeCustomerId),
     enabled: activeCustomerId.trim().length > 0,
     refetchInterval: (query) =>
-      query.state.data?.some((o) => isOrderInFlight(o.status)) ? 2000 : false,
+      query.state.data?.some((o) => isOrderInFlight(o.status, o.paymentStatus)) ? 2000 : false,
   });
 
   const shipmentQuery = useQuery({
@@ -177,7 +177,7 @@ function AdminOperationsContent() {
 
       <ResponsiveTable
         caption={`Orders for customer ${shortId(activeCustomerId)}`}
-        headers={['Order ID', 'Status', 'Items', 'Total', 'Placed', 'Actions']}
+        headers={['Order ID', 'Status', 'Payment', 'Items', 'Total', 'Placed', 'Actions']}
       >
         {(ordersQuery.data ?? []).map((order) => (
           <tr key={order.id}>
@@ -186,6 +186,9 @@ function AdminOperationsContent() {
             </th>
             <td data-label="Status">
               <StatusBadge status={order.status} />
+            </td>
+            <td data-label="Payment">
+              {order.paymentStatus ? <StatusBadge status={order.paymentStatus} /> : <span className="muted">—</span>}
             </td>
             <td data-label="Items">{order.lines.map((l) => `${l.sku} ×${l.quantity}`).join(', ')}</td>
             <td data-label="Total">
@@ -224,13 +227,26 @@ function AdminOperationsContent() {
                 <div className="row">
                   <h2 className="card-title">Order {shortId(selectedOrder.id)}</h2>
                   <StatusBadge status={selectedOrder.status} />
+                  {selectedOrder.paymentStatus ? (
+                    <StatusBadge status={selectedOrder.paymentStatus} />
+                  ) : null}
                 </div>
                 <Link to={`/orders/${selectedOrder.id}`} className="btn btn-sm">
                   Open full order page
                 </Link>
               </div>
+              {selectedOrder.paymentStatus === 'OVERDUE' ? (
+                <div className="banner banner-danger" role="alert">
+                  <strong>Payment OVERDUE</strong>
+                  <div className="banner-body">
+                    Shipment left the warehouse, but capture failed. Follow the payment operations
+                    runbook to collect the balance.
+                  </div>
+                </div>
+              ) : null}
               <SagaTimeline
                 status={selectedOrder.status}
+                paymentStatus={selectedOrder.paymentStatus}
                 cancellationReason={selectedOrder.cancellationReason}
               />
             </div>
